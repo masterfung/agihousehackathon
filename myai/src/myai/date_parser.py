@@ -94,6 +94,23 @@ def get_meal_time(query: str) -> str:
     """Extract meal time from query"""
     query_lower = query.lower()
     
+    # Check for explicit time patterns like "8pm", "7:30pm", etc.
+    time_patterns = [
+        r'(\d{1,2}):(\d{2})\s*(am|pm)',  # 7:30pm
+        r'(\d{1,2})\s*(am|pm)',           # 8pm
+    ]
+    
+    for pattern in time_patterns:
+        match = re.search(pattern, query_lower)
+        if match:
+            if len(match.groups()) == 3:  # Format: 7:30pm
+                hour, minute, period = match.groups()
+                return f"{hour}:{minute} {period.upper()}"
+            else:  # Format: 8pm
+                hour, period = match.groups()
+                return f"{hour}:00 {period.upper()}"
+    
+    # Fall back to meal-based defaults
     if any(word in query_lower for word in ["breakfast", "brunch"]):
         return "10:00 AM"
     elif any(word in query_lower for word in ["lunch"]):

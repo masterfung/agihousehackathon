@@ -11,14 +11,21 @@ except ImportError:
     from preferences import UserContext
 
 
-def build_opentable_url(context: UserContext, date: datetime, party_size: int = 2) -> str:
+def build_opentable_url(context: UserContext, date: datetime, party_size: int = 2, time_str: str = "7:00 PM") -> str:
     """Build OpenTable URL with all preferences pre-filled"""
     # OpenTable metro IDs: 4 = San Francisco
     base_url = "https://www.opentable.com/s"
     
+    # Convert time string to 24-hour format for URL
+    try:
+        time_obj = datetime.strptime(time_str, "%I:%M %p")
+        hour = time_obj.hour
+    except:
+        hour = 19  # Default to 7pm
+    
     params = {
         "covers": str(party_size),
-        "dateTime": date.strftime("%Y-%m-%dT19:00"),  # 7pm default
+        "dateTime": date.strftime(f"%Y-%m-%dT{hour:02d}:00"),
         "metroId": "4",  # San Francisco
         "term": "vegetarian",  # Search term
         "prices": "2,3",  # $$ and $$$ (matches $30-50 range)
@@ -78,24 +85,27 @@ def build_resy_url(context: UserContext, date: datetime, party_size: int = 2) ->
 
 def create_fast_search_task(platform: str, context: UserContext, query: str) -> str:
     """Create optimized search task with pre-built URLs"""
-    from .date_parser import parse_date_query, parse_party_size
+    from .date_parser import parse_date_query, parse_party_size, get_meal_time
     
     # Parse query details
     date_obj, date_str = parse_date_query(query)
     party_size = parse_party_size(query)
+    meal_time = get_meal_time(query)
     
     if platform == "opentable":
-        url = build_opentable_url(context, date_obj, party_size)
+        url = build_opentable_url(context, date_obj, party_size, meal_time)
         return f"""
-        Go to: {url}
-        
-        Once the page loads, immediately extract text content from the first 5 restaurant listings you see.
-        For each restaurant, capture: Name | Cuisine | Price | Area
-        
-        Example format:
-        Greens Restaurant | Vegetarian | $$$ | Fort Mason
-        
-        Just extract what's visible on screen right now.
+Go to {url}
+
+ACTION 1: After page loads, use extract_structured_data with this exact query:
+"Extract the name, cuisine type, price level, and neighborhood for each restaurant card visible on the page"
+
+ACTION 2: Take the extraction results and format them as:
+[Name] | [Cuisine] | [Price] | [Neighborhood]
+
+Return exactly 5 restaurants in this format. Nothing else.
+
+DO NOT SCROLL. Just extract what's visible immediately.
         """
     
     elif platform == "yelp":

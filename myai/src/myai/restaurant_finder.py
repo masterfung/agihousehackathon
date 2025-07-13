@@ -103,16 +103,15 @@ class RestaurantFinder:
     async def _search_platform(self, platform: str, task: str) -> List[Dict[str, Any]]:
         """Search a single platform and return evaluated restaurants"""
         try:
-            # Create agent for this platform with timeout
+            # Create agent for this platform with correct settings
             agent = Agent(
                 task=task,
                 llm=self.llm,
-                context=BrowserContext(
-                    headless=os.environ.get('BROWSER_HEADLESS', 'true').lower() == 'true',
-                    browser_type="chromium",
-                    timeout=30000  # 30 second timeout
-                ),
-                max_actions_per_step=8,  # Balanced for speed and effectiveness
+                browser_config={
+                    "headless": os.environ.get('BROWSER_HEADLESS', 'true').lower() == 'true',
+                    "disable_security": True,  # Faster loading
+                },
+                max_actions_per_step=10,  # Allow more actions for scrolling
             )
             
             # Execute the search with timeout
@@ -120,9 +119,12 @@ class RestaurantFinder:
             
             # Run with asyncio timeout - give it more time
             try:
-                result = await asyncio.wait_for(agent.run(), timeout=60.0)  # 1 minute
+                result = await asyncio.wait_for(agent.run(), timeout=45.0)  # 45 seconds
             except asyncio.TimeoutError:
-                print(f"  ⏱️  {platform} search timed out after 1 minute")
+                print(f"  ⏱️  {platform} search timed out after 45 seconds")
+                return []
+            except Exception as e:
+                print(f"  ❌ Error on {platform}: {str(e)}")
                 return []
             
             # Convert result to string if needed
