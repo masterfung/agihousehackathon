@@ -98,7 +98,7 @@ class UniversalExtractor:
     def __init__(self, api_key: str = None, config: Dict = None):
         self.api_key = api_key or self._load_api_key()
         self.config = config or PLATFORM_CONFIG
-        self.timeout = 120  # Increase to 2 minutes
+        self.timeout = 90  # 1.5 minute timeout
     
     def _load_api_key(self) -> str:
         """Load API key from environment"""
@@ -319,13 +319,18 @@ class UniversalExtractor:
         
         return f"""Go to {url}
 
-List the restaurant names you see on the page.
+Look for restaurant cards on the page. Scroll down once to see more.
 
-Just list them like:
+Extract ONLY the restaurant names (nothing else). Stop after finding 5-10 restaurants.
+
+Example output:
 Farmhouse Kitchen Thai Cuisine
-Burma Love Downtown  
+Burma Love Downtown
 Hed Very Thai
-(continue with more if you see them)"""
+Kin Khao
+Nari
+
+Just list restaurant names, one per line."""
     
     def _execute_cli(self, prompt: str) -> str:
         """Execute browser-use CLI"""
@@ -342,10 +347,11 @@ Hed Very Thai
             
             for cmd in commands:
                 try:
+                    # Redirect stderr to devnull to avoid capturing logs
                     process = subprocess.Popen(
                         cmd,
                         stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,  # Ignore stderr logs
                         text=True,
                         env=env
                     )
@@ -373,8 +379,15 @@ Hed Very Thai
                     
             except subprocess.TimeoutExpired:
                 print(f"⏱️ CLI timed out after {self.timeout}s")
-                # Kill the process
-                process.kill()
+                # Kill the process and its children
+                try:
+                    process.terminate()
+                    # Give it a moment to terminate gracefully
+                    process.wait(timeout=2)
+                except:
+                    # Force kill if terminate didn't work
+                    process.kill()
+                
                 # Try to get any output that was produced
                 try:
                     stdout, stderr = process.communicate(timeout=5)
@@ -384,10 +397,35 @@ Hed Very Thai
                 except:
                     pass
                 return ""
+            finally:
+                # Ensure process is terminated and cleaned up
+                if process.poll() is None:
+                    try:
+                        process.terminate()
+                        process.wait(timeout=2)
+                    except:
+                        process.kill()
+                
+                # Close any lingering Chromium processes
+                self._cleanup_chromium()
                 
         except Exception as e:
             print(f"💥 CLI execution failed: {e}")
+            self._cleanup_chromium()
             return ""
+    
+    def _cleanup_chromium(self):
+        """Close any lingering Chromium browser windows"""
+        try:
+            # Kill Chromium processes on macOS
+            import platform
+            if platform.system() == "Darwin":  # macOS
+                subprocess.run(["pkill", "-f", "Chromium"], capture_output=True)
+            elif platform.system() == "Linux":
+                subprocess.run(["pkill", "-f", "chromium"], capture_output=True)
+            # Note: On Windows, browser-use should handle cleanup
+        except:
+            pass  # Ignore errors in cleanup
     
     def _parse_results(self, raw_output: str, platform: str, context: Any) -> List[ExtractionResult]:
         """Parse CLI output into structured results"""
@@ -398,7 +436,13 @@ Hed Very Thai
         lines = raw_output.split('\n')
         for line in lines:
             line = line.strip()
-            if '|' in line and not line.startswith('Restaurant Name'):
+            # Skip log lines and only process real restaurant data
+            if ('|' in line and 
+                not line.startswith('Restaurant Name') and
+                not 'INFO' in line and 
+                not '[cost]' in line and
+                not '📥' in line and
+                not 'gemini' in line):
                 parts = [p.strip() for p in line.split('|')]
                 if len(parts) >= 2:
                     name = parts[0]
@@ -410,7 +454,7 @@ Hed Very Thai
                     if times_str and times_str.lower() not in ['no times available', 'none', '']:
                         availability = [t.strip() for t in times_str.split(',') if t.strip()]
                     
-                    if name and not name.startswith('['):  # Avoid placeholder text
+                    if name and not name.startswith('[') and len(name) > 3:  # Avoid placeholder text
                         results.append(ExtractionResult(
                             name=name,
                             cuisine=self._get_context_cuisine(platform, context),
@@ -492,8 +536,26 @@ Hed Very Thai
         
         for line in lines:
             line = line.strip()
-            # Skip empty lines, URLs, and common non-restaurant text
-            if not line or line.startswith('http') or line.startswith('(') or line.lower() in ['restaurant name', 'price', 'available times']:
+            # Skip empty lines, URLs, logging output, and common non-restaurant text
+            if (not line or 
+                line.startswith('http') or 
+                line.startswith('(') or 
+                line.startswith('INFO') or
+                line.startswith('DEBUG') or
+                line.startswith('ERROR') or
+                line.startswith('WARNING') or
+                line.startswith('Look for') or
+                line.startswith('Extract') or
+                line.startswith('Just list') or
+                line.startswith('The user') or
+                line.startswith('The agent') or
+                '[cost]' in line or
+                '[browser_use' in line or
+                'gemini' in line.lower() or
+                'scroll' in line.lower() or
+                'extract' in line.lower() or
+                '📥' in line or '📤' in line or '💾' in line or '🧠' in line or
+                line.lower() in ['restaurant name', 'price', 'available times', 'example output:']):
                 continue
                 
             # Check for numbered list format
@@ -505,16 +567,31 @@ Hed Very Thai
                 name = line
             
             # Basic filtering to avoid non-restaurant lines
-            if name and len(name) > 3 and not name.startswith('[') and not '|' in name:
+            if (name and 
+                len(name) > 3 and 
+                len(name) < 100 and  # Restaurant names shouldn't be super long
+                not name.startswith('[') and 
+                not '|' in name and
+                not name.startswith('gemini') and
+                not name.startswith('INFO') and
+                'cost' not in name.lower() and
+                'restaurant' not in name.lower() and  # Avoid instructions
+                'extract' not in name.lower() and
+                'scroll' not in name.lower() and
+                'user wants' not in name.lower() and
+                'agent has' not in name.lower()):
                 # Check if it looks like a restaurant name (has capital letters, not all lowercase)
-                if any(c.isupper() for c in name):
-                    results.append(ExtractionResult(
-                        name=name,
-                        cuisine=default_cuisine,
-                        price_range=default_price or "$$",
-                        location=default_location or "San Francisco",
-                        availability_times=[]
-                    ))
+                if any(c.isupper() for c in name) and not name.isupper():
+                    # Final check: does it look like an actual restaurant name?
+                    word_count = len(name.split())
+                    if 1 <= word_count <= 6:  # Restaurant names are usually 1-6 words
+                        results.append(ExtractionResult(
+                            name=name,
+                            cuisine=default_cuisine,
+                            price_range=default_price or "$$",
+                            location=default_location or "San Francisco",
+                            availability_times=[]
+                        ))
         
         return results
     
