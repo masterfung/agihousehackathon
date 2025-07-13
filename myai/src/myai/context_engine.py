@@ -57,6 +57,19 @@ PERSONAL_CONTEXT = """
   - dinner: "18:00-21:00"
 - preferred_days: ["tuesday", "wednesday", "thursday", "friday", "saturday"]
 - avoid_times: ["monday_dinner", "sunday_brunch"]
+
+## Clothing Preferences
+- shirt sizes: ["small", "medium", "large", "xlarge"]
+- pants waist size: ["30"]
+- pants length: ["30"]
+- gender: ["male"]
+- jacket sizes: ["large"]
+- shoe size: ["10"]
+- measurement system: ["us"]
+- brands to avoid: ["levis", "gap", "old navy", "forever 21", "american eagle", "h&m", "zara", "uniqlo", "forever 21", "american eagle", "h&m", "zara", "uniqlo"]
+- preferred brands: ["AG"]
+
+
 """
 
 @dataclass
@@ -219,13 +232,32 @@ class ContextEngine:
         return self.personal_data.get('dining_preferences', {}).get('party_size_typical', 2)
     
     def _extract_date(self, query: str) -> Optional[datetime]:
-        """Extract date from query - simplified for now"""
-        # This would be expanded with more sophisticated date parsing
-        if 'tomorrow' in query.lower():
-            from datetime import timedelta
-            return datetime.now() + timedelta(days=1)
-        elif 'tonight' in query.lower() or 'today' in query.lower():
-            return datetime.now()
+        """Extract date from query with better parsing"""
+        from datetime import timedelta
+        
+        query_lower = query.lower()
+        today = datetime.now()
+        
+        if 'tomorrow' in query_lower:
+            return today + timedelta(days=1)
+        elif 'tonight' in query_lower or 'today' in query_lower:
+            return today
+        elif 'next week' in query_lower:
+            return today + timedelta(days=7)
+        else:
+            # Check for day names
+            days = {
+                "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+                "friday": 4, "saturday": 5, "sunday": 6
+            }
+            
+            for day_name, day_num in days.items():
+                if day_name in query_lower:
+                    days_ahead = (day_num - today.weekday()) % 7
+                    if days_ahead == 0:
+                        days_ahead = 7  # Next week's day
+                    return today + timedelta(days=days_ahead)
+        
         return None
     
     def _extract_time(self, query: str) -> Optional[str]:
