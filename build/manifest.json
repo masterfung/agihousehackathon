@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Page Info Extension",
+  "version": "1.0",
+  "description": "Get current page title and URL",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "sidePanel"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Basic Extension"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "side_panel": {
+    "default_path": "index.html" 
+  }
+}
