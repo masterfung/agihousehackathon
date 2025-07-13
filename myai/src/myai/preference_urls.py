@@ -95,17 +95,25 @@ def create_fast_search_task(platform: str, context: UserContext, query: str) -> 
     if platform == "opentable":
         url = build_opentable_url(context, date_obj, party_size, meal_time)
         return f"""
-Go to {url}
+Navigate to {url}
 
-ACTION 1: After page loads, use extract_structured_data with this exact query:
-"Extract the name, cuisine type, price level, and neighborhood for each restaurant card visible on the page"
+Wait for the page to fully load (3 seconds).
 
-ACTION 2: Take the extraction results and format them as:
+Look at the search results and find restaurant listings. If you see less than 5, scroll down.
+
+For each of the first 5 restaurants you find, extract:
+- Restaurant name (the main title/link)
+- Cuisine type (usually shown below the name)
+- Price ($ symbols)
+- Neighborhood/area
+
+Format as:
 [Name] | [Cuisine] | [Price] | [Neighborhood]
 
-Return exactly 5 restaurants in this format. Nothing else.
+Example:
+Greens Restaurant | Vegetarian | $$$ | Fort Mason
 
-DO NOT SCROLL. Just extract what's visible immediately.
+Return 5 restaurants in this format.
         """
     
     elif platform == "yelp":

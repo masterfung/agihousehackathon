@@ -13,12 +13,14 @@ try:
     from .preferences import UserContext, format_preferences_for_prompt
     from .evaluator import RestaurantInfo, RestaurantEvaluator, EvaluationScore
     from .site_optimizations import create_optimized_task
+    from .query_analyzer import create_smart_browser_task
     from .fallback_data import get_fallback_restaurants
     from .simple_search import parse_raw_results
 except ImportError:
     from preferences import UserContext, format_preferences_for_prompt
     from evaluator import RestaurantInfo, RestaurantEvaluator, EvaluationScore
     from site_optimizations import create_optimized_task
+    from query_analyzer import create_smart_browser_task
     from fallback_data import get_fallback_restaurants
     from simple_search import parse_raw_results
 
@@ -49,14 +51,17 @@ class RestaurantFinder:
         if platforms is None:
             platforms = ["opentable", "resy", "yelp", "google"]
         
+        # Store query for CLI extraction
+        self._current_query = query
+        
         # Create optimized tasks for all platforms
         tasks = []
         for platform in platforms:
             platform_lower = platform.lower()
             if platform_lower in ["opentable", "resy", "yelp", "google"]:
                 # Use optimized platform-specific task with query
-                task_desc = create_optimized_task(platform_lower, self.context, query)
-                tasks.append(self._search_platform(platform, task_desc))
+                task_desc = create_smart_browser_task(platform_lower, query, self.context)
+                tasks.append(self._search_platform(platform, task_desc, query))
             else:
                 print(f"Skipping unsupported platform: {platform}")
                 continue
@@ -73,76 +78,87 @@ class RestaurantFinder:
                 continue
             all_restaurants.extend(platform_results)
         
-        # If no results from any platform, use fallback data
+        # If no results from any platform, return empty
         if not all_restaurants:
-            print("\n⚠️  No results from web search.")
-            
-            # Use fallback data so user gets something
-            print("📚 Using known vegetarian restaurants in San Francisco...")
-            fallback_data = get_fallback_restaurants("san_francisco", num_results)
-            
-            for restaurant_data in fallback_data:
-                restaurant_info = self._create_restaurant_info(restaurant_data, "fallback")
-                score = self.evaluator.evaluate_restaurant(restaurant_info)
-                
-                all_restaurants.append({
-                    "restaurant": restaurant_info,
-                    "score": score,
-                    "platform": "known"
-                })
-            
-            print("\n💡 Tips for better results:")
-            print("  - Try a single platform: poetry run python src/myai/main.py find 'dinner' yelp")
-            print("  - Debug mode: BROWSER_HEADLESS=false python test_single_platform.py google")
-            print("  - Check the troubleshooting section in README.md")
+            print("\n⚠️  No results found. The browser may have timed out.")
+            print("💡 Try running with fewer platforms or increase the timeout.")
+            return []
         
         # Sort by score and return top N
         all_restaurants.sort(key=lambda x: x["score"].total_score, reverse=True)
         return all_restaurants[:num_results]
     
-    async def _search_platform(self, platform: str, task: str) -> List[Dict[str, Any]]:
-        """Search a single platform and return evaluated restaurants"""
+    async def _search_platform(self, platform: str, task: str, query: str = "dinner tonight") -> List[Dict[str, Any]]:
+        """Search a single platform using CLI-first approach for reliability"""
         try:
-            # Create agent for this platform with correct settings
+            print(f"  🔍 Searching {platform} with browser automation...")
+            
+            # Use the working CLI extraction approach
+            try:
+                from .cli_extractor import extract_restaurants_cli
+                
+                restaurants = extract_restaurants_cli(platform, query, self.context)
+                
+                if restaurants:
+                    print(f"  ✅ CLI extracted {len(restaurants)} restaurants")
+                    
+                    # Evaluate each restaurant
+                    evaluated_restaurants = []
+                    for restaurant_data in restaurants[:5]:
+                        restaurant_info = self._create_restaurant_info(restaurant_data, platform)
+                        score = self.evaluator.evaluate_restaurant(restaurant_info)
+                        
+                        evaluated_restaurants.append({
+                            "restaurant": restaurant_info,
+                            "score": score,
+                            "platform": platform
+                        })
+                    
+                    return evaluated_restaurants
+                
+            except Exception as cli_e:
+                print(f"  ⚠️ CLI extraction failed: {str(cli_e)}")
+            
+            # Fallback to simple extraction
+            print(f"  🔄 Using simple extraction (no scrolling)...")
+            
+            # Create task with smart termination
+            try:
+                from .smart_termination import create_terminating_task
+                from .query_analyzer import analyze_query, build_direct_url
+                params = analyze_query(query, self.context)
+                url = build_direct_url(platform, params)
+                efficient_task = create_terminating_task(url, params)
+            except:
+                efficient_task = f"Go to OpenTable, extract visible restaurants for {query}, and stop when no more results"
+            
             agent = Agent(
-                task=task,
+                task=efficient_task,
                 llm=self.llm,
                 browser_config={
-                    "headless": os.environ.get('BROWSER_HEADLESS', 'true').lower() == 'true',
-                    "disable_security": True,  # Faster loading
+                    "headless": False,
+                    "disable_security": True,
                 },
-                max_actions_per_step=10,  # Allow more actions for scrolling
+                max_actions_per_step=3,  # Very limited actions
             )
             
-            # Execute the search with timeout
-            print(f"  🔍 Searching {platform}...")
-            
-            # Run with asyncio timeout - give it more time
             try:
-                result = await asyncio.wait_for(agent.run(), timeout=45.0)  # 45 seconds
+                result = await asyncio.wait_for(agent.run(), timeout=20.0)  # Very short timeout
             except asyncio.TimeoutError:
-                print(f"  ⏱️  {platform} search timed out after 45 seconds")
-                return []
-            except Exception as e:
-                print(f"  ❌ Error on {platform}: {str(e)}")
+                print(f"  ⏱️ {platform} quick search timed out after 30s")
                 return []
             
-            # Convert result to string if needed
-            if hasattr(result, '__str__'):
-                result_str = str(result)
-            else:
-                result_str = result
-            
-            # Debug: Show first 200 chars of result
-            print(f"  📄 Raw result preview: {result_str[:200]}...")
-            
-            # Parse the results
+            # Parse programmatic results
+            result_str = str(result) if hasattr(result, '__str__') else result
             restaurants = self._parse_search_results(result_str, platform)
-            print(f"  🔍 Parsed {len(restaurants)} raw restaurants from {platform}")
             
-            # Evaluate each restaurant
+            if not restaurants:
+                print(f"  ⚠️ No results from {platform}")
+                return []
+            
+            # Evaluate restaurants
             evaluated_restaurants = []
-            for restaurant_data in restaurants[:5]:  # Limit per platform
+            for restaurant_data in restaurants[:5]:
                 restaurant_info = self._create_restaurant_info(restaurant_data, platform)
                 score = self.evaluator.evaluate_restaurant(restaurant_info)
                 

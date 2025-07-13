@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "on_page_load": "browser_hooks:on_page_load",
+    "on_action_complete": "browser_hooks:on_action_complete", 
+    "on_task_complete": "browser_hooks:on_task_complete"
+  },
+  "screenshot_config": {
+    "capture_on_load": true,
+    "capture_on_scroll": true,
+    "save_screenshots": true
+  }
+}

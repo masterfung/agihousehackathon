@@ -14,6 +14,7 @@ def parse_party_size(query: str) -> int:
     patterns = [
         r'for (\d+) people',
         r'for (\d+) person',
+        r'for (\d+)',  # Just "for X" without people
         r'party of (\d+)',
         r'table for (\d+)',
         r'(\d+) people',
