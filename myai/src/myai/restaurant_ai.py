@@ -14,7 +14,7 @@ import json
 from datetime import datetime
 
 from .context_engine import default_context_engine, ContextualRequest
-from .enhanced_cli_extractor import enhanced_extractor, RestaurantResult
+from .universal_extractor import universal_extractor, ExtractionResult
 
 class RestaurantAI:
     """Main restaurant AI interface"""
@@ -22,7 +22,7 @@ class RestaurantAI:
     def __init__(self, mcp_data: Optional[Dict[str, Any]] = None):
         """Initialize with optional MCP server data"""
         self.context_engine = default_context_engine
-        self.extractor = enhanced_extractor
+        self.extractor = universal_extractor
         
         # Load MCP data if provided
         if mcp_data:
@@ -50,8 +50,8 @@ class RestaurantAI:
         print(f"  • Meal: {context.meal_type}")
         print(f"  • Relevance: {self._format_relevance(context.context_relevance)}")
         
-        # Extract restaurants with enhanced CLI
-        restaurants = self.extractor.extract_restaurants(query)
+        # Extract restaurants with universal CLI
+        restaurants = self.extractor.extract_restaurants(query, "opentable", context)
         
         # Format results
         results = {
@@ -72,7 +72,7 @@ class RestaurantAI:
         relevant = [f"{k}({v:.1f})" for k, v in relevance.items() if v > 0.1]
         return ", ".join(relevant) if relevant else "general"
     
-    def _create_summary(self, restaurants: List[RestaurantResult], context: ContextualRequest) -> Dict[str, Any]:
+    def _create_summary(self, restaurants: List[ExtractionResult], context: ContextualRequest) -> Dict[str, Any]:
         """Create a summary of the search results"""
         
         total_found = len(restaurants)
@@ -89,7 +89,7 @@ class RestaurantAI:
             'context_used': {k: v for k, v in context.context_relevance.items() if v > 0.1}
         }
     
-    def _display_results(self, restaurants: List[RestaurantResult], context: ContextualRequest):
+    def _display_results(self, restaurants: List[ExtractionResult], context: ContextualRequest):
         """Display formatted results to user"""
         
         if not restaurants:
@@ -112,12 +112,9 @@ class RestaurantAI:
                     times_str += f" (+{len(restaurant.availability_times)-3} more)"
                 print(f"   🕐 Available: {times_str}")
             
-            if restaurant.special_features:
-                features_str = ", ".join(restaurant.special_features[:2])
+            if restaurant.features:
+                features_str = ", ".join(restaurant.features[:2])
                 print(f"   ✨ {features_str}")
-            
-            if restaurant.phone:
-                print(f"   📞 {restaurant.phone}")
     
     def get_context_status(self) -> Dict[str, Any]:
         """Get current context engine status"""

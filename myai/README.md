@@ -1,210 +1,253 @@
 # MyAI - Personal Context-Driven Restaurant Finder
 
-A browser automation system that uses your personal preferences to find and evaluate restaurants across multiple platforms (OpenTable, Yelp, Google Maps).
+A composable, intelligent restaurant discovery system using browser automation and personal preferences to find restaurants on OpenTable, Resy, and other platforms.
 
 ## Overview
 
-This project demonstrates how personal context can enhance AI-driven automation. It uses hardcoded preferences now but is designed to integrate with MCP (Model Context Protocol) servers for dynamic preference management.
+MyAI uses a centralized context engine to understand your personal dining preferences and intelligently search restaurant platforms. It features a clean CLI interface, real-time availability extraction, and MCP server compatibility for dynamic preference management.
 
-## Features
+## Key Features
 
-- 🎯 **Personal Preference System**: Dietary restrictions, cuisine preferences, budget, location, and more
-- 🏆 **Smart Scoring**: Evaluates restaurants on multiple criteria (0-100 score)
-- 🌐 **Multi-Platform Search**: Parallel search across OpenTable, Resy, Yelp, and Google Maps
-- ⚡ **Platform Optimization**: Uses each site's native filters for fast, accurate results
-- 📅 **Smart Date Parsing**: Understands "tomorrow", "next Friday", etc. and sets dates correctly
-- 🎯 **Context Prioritization**: Ranks requirements by importance (dietary > location > cuisine)
-- ⏱️ **Fast Results**: 45-second timeout per platform to prevent endless searching
-- 🤖 **Browser Automation**: Uses browser-use with Gemini 2.5 Pro to search and extract data
-- 📊 **Detailed Evaluation**: Breaks down scores by category with explanations
+- 🎯 **Centralized Context Engine**: Docstring-style personal preferences with intelligent prompt analysis
+- 🍽️ **Multi-Platform Support**: OpenTable, Resy with platform-specific optimizations
+- ⚡ **Fast CLI Extraction**: Direct browser-use CLI calls for reliable results
+- 📅 **Smart Date/Time Parsing**: "next wednesday", "6:30PM", party size detection
+- 🔗 **Optimized URLs**: Direct search URLs with proper parameters (e.g., `facet=cuisine:Asian` for Resy)
+- 🤖 **MCP Server Ready**: Composable architecture for Model Context Protocol integration
+- 🎨 **Simple Interface**: Clean command-line interface with platform selection
 
-## Your Preferences (Hardcoded)
+## Personal Preferences (Editable)
 
-```
-- Dietary: Vegetarian (no peanuts), not just salads
-- Cuisines: Asian, Mexican preferred
-- Budget: $30-50 per dish
-- Location: San Francisco 94109, prefers public transit
-- Wine: Important, corkage preferred
-- Spice: Mild tolerance
+Your preferences are stored in `src/myai/context_engine.py` in a docstring format:
+
+```python
+## Dietary Requirements
+- vegetarian: true
+- allergies: ["peanut", "shrimp"]
+- spice_tolerance: "mild"
+
+## Cuisine Preferences  
+- preferred_cuisines: ["fusion", "asian", "mexican"]
+- favorite_types: ["thai", "vietnamese", "indian"]
+
+## Budget & Pricing
+- min_price_per_dish: 10.0
+- max_price_per_dish: 30.0
+- comfortable_total_per_person: 40.0
+
+## Location & Transit
+- home_zip: "94109"
+- prefers_public_transit: true
 ```
 
 ## Installation
 
 ```bash
-# Install dependencies with Poetry
+# Install dependencies
 poetry install
 
-# Set up environment
-cp .env.example .env
-# Add your GOOGLE_API_KEY to .env
+# Set up API key (required)
+export GOOGLE_API_KEY="your-gemini-api-key"
+# OR add to .env file in parent directory
 ```
 
 ## Usage
 
-### Find Restaurants
+### Basic Commands
+
 ```bash
-# Default search (all platforms in parallel)
-poetry run python src/myai/main.py find
+# Search Resy for dinner
+PYTHONPATH=src poetry run python -m myai.main_clean find "next wednesday for 3 people dinner at 7:15PM" resy
 
-# Search all platforms for specific query
-poetry run python src/myai/main.py find "lunch tomorrow"
+# Search OpenTable  
+PYTHONPATH=src poetry run python -m myai.main_clean find "lunch for 2 tomorrow" opentable
 
-# Search single platform only
-poetry run python src/myai/main.py find "dinner tonight" yelp
-poetry run python src/myai/main.py find "lunch tomorrow" google
+# Quick search (names only)
+PYTHONPATH=src poetry run python -m myai.main_clean quick "vegetarian asian dinner"
 
-# Debug mode - see browser in action
-BROWSER_HEADLESS=false poetry run python src/myai/main.py find "dinner" yelp
+# Check system status
+PYTHONPATH=src poetry run python -m myai.main_clean status
 
-# Increase timeout for slow connections
-BROWSER_TIMEOUT=60000 poetry run python src/myai/main.py find
+# Export data for MCP server
+PYTHONPATH=src poetry run python -m myai.main_clean export-mcp
 ```
 
-### Evaluate Specific Restaurant
+### Query Examples
+
 ```bash
-python -m myai evaluate "Shizen" "Japanese, Sushi" "$$" "370 14th St, San Francisco"
+# Natural language queries work
+"lunch for 3 next tuesday"
+"dinner for 4 wednesday at 6:30PM"  
+"breakfast for 2 tomorrow"
+"next friday dinner for 5"
 ```
 
-### Run Demo
-```bash
-python example_usage.py
-```
+### Platform-Specific Features
 
-### Debug Single Platform
-```bash
-# Test one platform at a time
-python test_single_platform.py yelp
-python test_single_platform.py google
+**Resy:**
+- Uses `facet=cuisine:Asian` filtering
+- Extracts availability times
+- Optimized for fusion/asian cuisine
 
-# See browser in action
-BROWSER_HEADLESS=false python test_single_platform.py opentable
-```
+**OpenTable:**
+- Direct search with party size and date/time
+- Vegetarian filtering
+- Transit-accessible locations
 
 ## How It Works
 
-1. **Preferences** (`preferences.py`): Stores your personal context
-2. **Date Parser** (`date_parser.py`): Understands natural language dates ("tomorrow", "next Friday")
-3. **Search Optimizer** (`search_optimizer.py`): Builds smart queries and prioritizes context
-4. **Site Optimizations** (`site_optimizations.py`): Platform-specific search filters
-5. **Evaluator** (`evaluator.py`): Scores restaurants based on preferences
-6. **Finder** (`restaurant_finder.py`): Automates browser to search platforms in parallel
-7. **Main** (`main.py`): Orchestrates the search and evaluation
+### Architecture
 
-### Key Optimizations
+1. **Context Engine** (`context_engine.py`): Parses personal preferences and analyzes queries
+2. **Universal Extractor** (`universal_extractor.py`): Configuration-driven platform extraction with no hardcoded values
+3. **Simple Prompts**: Uses minimal prompts for reliable browser-use CLI execution
+4. **Real-time Results**: Extracts actual restaurant names, availability, and details
 
-#### Smart Search Queries
-- **Google Maps**: "vegetarian mexican restaurants near 94109" (not all cuisines at once)
-- **Yelp**: Searches "vegetarian restaurants" directly
-- **OpenTable**: Simple city search, reads vegetarian-friendly results
-- **Resy**: Searches by cuisine type (Mexican/Asian) since dietary filters don't work well
+### URL Generation Examples
 
-#### Context Prioritization
-1. **🚨 Must Have**: Dietary restrictions (vegetarian, allergies)
-2. **⚡ Important**: Location, budget, transit access
-3. **👍 Nice to Have**: Cuisine preferences, wine program
+**Resy:**
+```
+https://resy.com/cities/san-francisco-ca/search?date=2025-07-16&seats=3&time=1830&facet=cuisine:Asian
+```
 
-#### Performance Optimizations
-- **Simple Extraction**: Just navigate to URL and extract text
-- **3-Minute Timeout**: Gives agent enough time to load pages
-- **Debug Mode**: Run with `BROWSER_HEADLESS=false` to see what's happening
-- **Raw Text Parsing**: Extracts all text and parses it locally
-- **Direct URLs**: Pre-built search URLs to avoid complex navigation
+**OpenTable:**
+```
+https://www.opentable.com/s?covers=3&dateTime=2025-07-16T18:30&metroId=4&term=vegetarian+asian&prices=2,3
+```
 
-## Scoring System
+### Context Analysis
 
-- **Dietary Fit** (25 points): Vegetarian options quality and variety
-- **Cuisine Match** (20 points): Alignment with preferred cuisines
-- **Budget Fit** (20 points): Price range compatibility
-- **Location** (20 points): Distance and transit accessibility
-- **Wine Program** (15 points): Wine list quality and corkage policy
+The system intelligently determines what personal context is relevant:
 
-## Future MCP Integration
+```python
+# Query: "vegetarian asian dinner for 4"
+Relevance: {
+  'dietary': 0.8,    # High - "vegetarian" detected
+  'cuisine': 0.9,    # High - "asian" detected  
+  'timing': 0.6,     # Medium - "dinner" detected
+  'location': 0.0,   # Low - no location keywords
+  'budget': 0.0      # Low - no budget keywords
+}
+```
 
-The system is designed to connect to an MCP server that will:
-- Dynamically load user preferences
-- Update preferences based on feedback
-- Share context across different AI services
-- Maintain privacy with local data control
+## Recent Restaurant Results
+
+**Resy (Asian, Wednesday 6:30PM, 3 people):**
+- Good Good Culture Club
+- Liholiho Yacht Club  
+- E&O Kitchen and Bar
+- Piglet & Co
+
+**OpenTable (Vegetarian Asian):**
+- New Delhi Restaurant
+- Osha Thai Embarcadero
+- Burma Love
+- Roti Indian Bistro
+
+## Performance Optimizations
+
+### Simple Prompts Work Best
+❌ **Complex prompts cause timeouts:**
+```
+"Go to URL. TASK: Extract restaurant information with availability times from RESY. 
+RESY-SPECIFIC INSTRUCTIONS: Look for restaurant cards with names and time slots..."
+```
+
+✅ **Simple prompts work reliably:**
+```
+"Go to URL and extract restaurant names you see. List them as:
+1. Restaurant Name
+2. Restaurant Name"
+```
+
+### Direct CLI Approach
+- Uses `browser-use` CLI directly with subprocess
+- 60-90 second timeout per platform
+- Minimal wrapper overhead
+- Real-time restaurant extraction
+
+## MCP Server Integration
+
+The system is designed for MCP server compatibility:
+
+```python
+# Export current context
+restaurant_ai.export_for_mcp()
+
+# Load from MCP server
+restaurant_ai.update_from_mcp(mcp_data)
+
+# Check MCP compatibility
+restaurant_ai.get_context_status()
+```
 
 ## Example Output
 
 ```
-🚀 Searching for restaurants for 'dinner tomorrow' across 4 platforms...
+🔍 Searching RESY for: 'next wednesday for 3 people dinner at 6:30PM'
+🔗 Enhanced URL: https://resy.com/cities/san-francisco-ca/search?date=2025-07-16&seats=3&time=1830&facet=cuisine:Asian
+📋 Context: 3 people, dinner
+✅ Extracted 4 restaurants with availability
 
-Using your preferences:
-  • Dietary: Vegetarian (no peanuts)
-  • Cuisines: asian, mexican
-  • Budget: $30-50/dish
-  • Location: 94109 (prefer public transit)
-  • Wine: Important with corkage preference
-  • Spice tolerance: Mild
+🎯 Found 4 restaurants on RESY:
 
-🔄 Searching 4 platforms in parallel...
-  🔍 Searching opentable...
-  🔍 Searching resy...
-  🔍 Searching yelp...
-  🔍 Searching google...
-  ✅ Found 5 restaurants on yelp
-  ✅ Found 5 restaurants on google
-  ✅ Found 4 restaurants on opentable
-  ✅ Found 3 restaurants on resy
+1. **Good Good Culture Club**
+   🍽️  Asian • $$ • San Francisco
+   🕐 Available: Check availability
 
-🎯 Top 5 restaurants from all platforms:
+2. **Liholiho Yacht Club**  
+   🍽️  Asian • $$ • San Francisco
+   🕐 Available: Check availability
 
-1. Shizen Vegan Sushi Bar (YELP)
-   Score: 88.0/100 - 🌟 Excellent Match!
-   Cuisine: Vegan, Sushi Bars, Japanese
-   Price Range: $$
-   Address: Mission
-   
-   This is an excellent match for your preferences! Strengths: Excellent vegetarian options available; 
-   Serves your preferred Vegan, Sushi Bars, Japanese cuisine; Price range perfectly matches your budget; 
-   Conveniently located with transit access.
+📊 Summary:
+   • Found 4 restaurants on resy
+   • 0 with availability times  
+   • Cuisines: Asian
+   • Price ranges: $$
+```
 
-2. Greens Restaurant (GOOGLE)
-   Score: 85.5/100 - 🌟 Excellent Match!
-   Cuisine: Vegetarian restaurant
-   Price Range: $$
-   Address: Fort Mason
-   Distance: 1.5 miles
-   
-   ...
+## File Structure
 
-💡 Top Recommendation:
-   Shizen Vegan Sushi Bar (YELP)
-   Score: 88.0/100
-   This is an excellent match for your preferences!
-
-📅 Ready to book for dinner tomorrow?
-   Visit yelp to make a reservation.
+```
+src/myai/
+├── context_engine.py          # Personal preferences & query analysis
+├── universal_extractor.py     # Configuration-driven platform extraction
+├── restaurant_ai.py           # Main composable interface
+├── main_clean.py             # CLI interface
+├── date_parser.py            # Date/time parsing utilities
+└── preferences.py            # Legacy preference system
 ```
 
 ## Troubleshooting
 
-### No Results Found
-1. **Run in visible mode**: `BROWSER_HEADLESS=false poetry run python src/myai/main.py find "dinner" yelp`
-2. **Test single platform**: `python test_single_platform.py google`
-3. **Check browser loads**: The agent might be having issues with page loading
-4. **Increase timeout**: Set longer timeout if on slow connection
-5. **Check API key**: Ensure your `GOOGLE_API_KEY` is valid in `.env`
+### Common Issues
 
-### AFC Rate Limit Errors
-- The Gemini API has limits on function calls
-- Try using a single platform instead of all 4
-- Consider using `gemini-1.5-flash` instead of `gemini-2.5-flash-lite-preview`
+1. **ModuleNotFoundError**: Ensure you're using `PYTHONPATH=src`
+2. **API Key Error**: Set `GOOGLE_API_KEY` environment variable
+3. **Timeouts**: Complex prompts cause issues - system uses simple prompts
+4. **No Results**: Check if the generated URL is correct
 
-### Debugging Tips
+### Debug Commands
+
 ```bash
-# See what the browser is doing
-BROWSER_HEADLESS=false python test_single_platform.py yelp
+# Test URL generation
+PYTHONPATH=src python -c "from myai.universal_extractor import universal_extractor; print('URL building test')"
 
-# Test with more verbose output
-poetry run python src/myai/main.py find "dinner" google
+# Test direct CLI
+GOOGLE_API_KEY=your-key poetry run browser-use --model gemini-2.5-flash-lite-preview-06-17 --prompt "Go to resy.com and list restaurants"
 
-# Check if websites are accessible
-curl -I https://www.yelp.com
+# Check system status  
+PYTHONPATH=src poetry run python -m myai.main_clean status
 ```
+
+## Contributing
+
+The system is designed to be composable and extensible:
+
+1. **Add new platforms**: Extend `universal_extractor.py` platform configuration
+2. **Update preferences**: Edit the docstring in `context_engine.py`  
+3. **Improve parsing**: Enhance query analysis in `context_engine.py`
+4. **MCP integration**: Use the `restaurant_ai.py` interface
 
 ## License
 

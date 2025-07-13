@@ -25,19 +25,71 @@ def main():
     
     if command == "find":
         if len(sys.argv) < 3:
-            print("❌ Please provide a query. Example: find 'lunch for 3 next tuesday'")
+            print("❌ Please provide a query. Example: find 'lunch for 3 next tuesday' [platform]")
+            print("   Platforms: opentable, resy")
             return
         
-        query = " ".join(sys.argv[2:]).strip().strip('"').strip("'")
-        results = restaurant_ai.find_restaurants(query)
+        # Parse platform if provided
+        platform = "opentable"  # default
+        args = sys.argv[2:]
+        if args[-1].lower() in ["opentable", "resy"]:
+            platform = args[-1].lower()
+            args = args[:-1]
         
-        # Also show summary
-        summary = results['summary']
+        query = " ".join(args).strip().strip('"').strip("'")
+        
+        # Use universal extractor (configurable, not hardcoded)
+        from .universal_extractor import universal_extractor
+        from .context_engine import default_context_engine
+        
+        print(f"🔍 Searching {platform.upper()} for: '{query}'")
+        
+        # Analyze query for context
+        context = default_context_engine.analyze_request(query)
+        
+        # Extract restaurants using universal system
+        restaurants = universal_extractor.extract_restaurants(query, platform, context)
+        
+        # Format results 
+        if not restaurants:
+            print("❌ No restaurants found")
+            return
+            
+        print(f"\n🎯 Found {len(restaurants)} restaurants on {platform.upper()}:")
+        for i, r in enumerate(restaurants, 1):
+            print(f"\n{i}. **{r.name}**")
+            print(f"   🍽️  {r.cuisine} • {r.price_range} • {r.location}")
+            
+            if r.availability_times and r.availability_times != ['Check availability']:
+                times_str = ", ".join(r.availability_times[:3])
+                if len(r.availability_times) > 3:
+                    times_str += f" (+{len(r.availability_times)-3} more)"
+                print(f"   🕐 Available: {times_str}")
+            elif r.availability_times:
+                print(f"   🕐 {r.availability_times[0]}")
+        
+        # Show summary
+        with_real_times = len([r for r in restaurants if r.availability_times and r.availability_times != ['Check availability']])
+        cuisines = list(set([r.cuisine for r in restaurants if r.cuisine]))
+        price_ranges = list(set([r.price_range for r in restaurants if r.price_range]))
+        
         print(f"\n📊 Summary:")
-        print(f"   • Found {summary['total_restaurants']} restaurants")
-        print(f"   • {summary['with_availability']} with availability times")
-        print(f"   • Cuisines: {', '.join(summary['cuisines_found'])}")
-        print(f"   • Price ranges: {', '.join(summary['price_ranges'])}")
+        print(f"   • Found {len(restaurants)} restaurants on {platform}")
+        print(f"   • {with_real_times} with real availability times")
+        print(f"   • Cuisines: {', '.join(cuisines)}")
+        print(f"   • Price ranges: {', '.join(price_ranges)}")
+        
+        # Show context analysis
+        print(f"\n🎯 Context Analysis:")
+        print(f"   • Query: {query}")
+        print(f"   • Parsed: {context.party_size} people, {context.meal_type}")
+        if context.time:
+            print(f"   • Time: {context.time}")
+        if context.date:
+            print(f"   • Date: {context.date.strftime('%A, %B %d')}")
+        relevant_context = [k for k, v in context.context_relevance.items() if v > 0.1]
+        if relevant_context:
+            print(f"   • Used context: {', '.join(relevant_context)}")
     
     elif command == "quick":
         if len(sys.argv) < 3:

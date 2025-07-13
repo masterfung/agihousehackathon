@@ -14,63 +14,61 @@ from datetime import datetime
 import json
 
 # ============================================================================
-# PERSONAL CONTEXT DATA (Docstring-style format for easy parsing)
+# PERSONAL CONTEXT DATA (JSON format for easy access and modification)
 # ============================================================================
 
-PERSONAL_CONTEXT = """
-# Personal Dining Preferences
-
-## Dietary Requirements
-- vegetarian: true
-- allergies: ["peanut, shrimp"]
-- spice_tolerance: "mild"
-- dietary_restrictions: ["no_meat", "no_peanuts", "no_shrimp"]
-
-## Cuisine Preferences
-- preferred_cuisines: ["asian", "mexican"]
-- favorite_types: ["thai", "vietnamese", "mexican", "indian"]
-- avoid_cuisines: ["american_fast_food"]
-
-## Budget & Pricing
-- min_price_per_dish: 10.0
-- max_price_per_dish: 30.0
-- preferred_price_range: "$$_to_$$$"
-- comfortable_total_per_person: 40.0
-
-## Location & Transit
-- home_zip: "94109"
-- preferred_neighborhoods: ["nob_hill", "union_square", "castro", "mission"]
-- max_distance_miles: 3.0
-- prefers_public_transit: true
-
-## Dining Preferences
-- wine_list_important: true
-- allows_corkage: true
-- ambiance_preferences: ["cozy", "intimate", "good_for_conversation"]
-- party_size_typical: 2
-- reservation_preference: "opentable_first"
-
-## Availability Preferences
-- preferred_meal_times:
-  - breakfast: "9:00-11:00"
-  - lunch: "12:00-14:00" 
-  - dinner: "18:00-21:00"
-- preferred_days: ["tuesday", "wednesday", "thursday", "friday", "saturday"]
-- avoid_times: ["monday_dinner", "sunday_brunch"]
-
-## Clothing Preferences
-- shirt sizes: ["small", "medium", "large", "xlarge"]
-- pants waist size: ["30"]
-- pants length: ["30"]
-- gender: ["male"]
-- jacket sizes: ["large"]
-- shoe size: ["10"]
-- measurement system: ["us"]
-- brands to avoid: ["levis", "gap", "old navy", "forever 21", "american eagle", "h&m", "zara", "uniqlo", "forever 21", "american eagle", "h&m", "zara", "uniqlo"]
-- preferred brands: ["AG"]
-
-
-"""
+PERSONAL_CONTEXT = {
+    "dietary_requirements": {
+        "vegetarian": True,
+        "allergies": ["peanut", "shrimp"],
+        "spice_tolerance": "mild",
+        "dietary_restrictions": ["no_meat", "no_peanuts", "no_shrimp"]
+    },
+    "cuisine_preferences": {
+        "preferred_cuisines": ["fusion", "asian", "mexican"],
+        "favorite_types": ["thai", "vietnamese", "mexican", "indian"],
+        "avoid_cuisines": ["american_fast_food"]
+    },
+    "budget_pricing": {
+        "min_price_per_dish": 10.0,
+        "max_price_per_dish": 30.0,
+        "preferred_price_range": "$$_to_$$$",
+        "comfortable_total_per_person": 40.0
+    },
+    "location_transit": {
+        "home_zip": "94109",
+        "preferred_neighborhoods": ["nob_hill", "union_square", "castro", "mission"],
+        "max_distance_miles": 3.0,
+        "prefers_public_transit": True
+    },
+    "dining_preferences": {
+        "wine_list_important": True,
+        "allows_corkage": True,
+        "ambiance_preferences": ["cozy", "intimate", "good_for_conversation"],
+        "party_size_typical": 2,
+        "reservation_preference": "opentable_first"
+    },
+    "availability_preferences": {
+        "preferred_meal_times": {
+            "breakfast": "9:00-11:00",
+            "lunch": "12:00-14:00",
+            "dinner": "18:00-21:00"
+        },
+        "preferred_days": ["tuesday", "wednesday", "thursday", "friday", "saturday"],
+        "avoid_times": ["monday_dinner", "sunday_brunch"]
+    },
+    "clothing_preferences": {
+        "shirt_sizes": ["small", "medium", "large", "xlarge"],
+        "pants_waist_size": ["30"],
+        "pants_length": ["30"],
+        "gender": ["male"],
+        "jacket_sizes": ["large"],
+        "shoe_size": ["10"],
+        "measurement_system": ["us"],
+        "brands_to_avoid": ["levis", "gap", "old navy", "forever 21", "american eagle", "h&m", "zara", "uniqlo"],
+        "preferred_brands": ["AG"]
+    }
+}
 
 @dataclass
 class ContextualRequest:
@@ -100,8 +98,10 @@ class ContextualRequest:
 class ContextEngine:
     """Intelligent context engine that analyzes prompts and provides relevant personal data"""
     
-    def __init__(self, personal_context: str = PERSONAL_CONTEXT):
-        self.personal_data = self._parse_personal_context(personal_context)
+    def __init__(self, personal_context: Dict[str, Any] = None):
+        if personal_context is None:
+            personal_context = PERSONAL_CONTEXT
+        self.personal_data = personal_context if isinstance(personal_context, dict) else self._parse_personal_context(personal_context)
         self.context_keywords = self._build_context_keywords()
     
     def _parse_personal_context(self, context_text: str) -> Dict[str, Any]:
@@ -112,7 +112,10 @@ class ContextEngine:
         
         for line in context_text.split('\n'):
             line = line.strip()
-            if not line or line.startswith('#'):
+            if not line:
+                continue
+            # Skip only single # comments, not section headers ##
+            if line.startswith('#') and not line.startswith('##'):
                 continue
                 
             # Section headers
@@ -194,7 +197,8 @@ class ContextEngine:
         
         # Build relevant context data
         dietary_context = self.personal_data.get('dietary_requirements', {}) if relevance['dietary'] > 0.1 else {}
-        cuisine_context = self.personal_data.get('cuisine_preferences', {}) if relevance['cuisine'] > 0.1 else {}
+        # Always include cuisine preferences as defaults for restaurant searches
+        cuisine_context = self.personal_data.get('cuisine_preferences', {})
         budget_context = self.personal_data.get('budget_pricing', {}) if relevance['budget'] > 0.1 else {}
         location_context = self.personal_data.get('location_transit', {}) if relevance['location'] > 0.1 else {}
         timing_context = self.personal_data.get('availability_preferences', {}) if relevance['timing'] > 0.1 else {}
