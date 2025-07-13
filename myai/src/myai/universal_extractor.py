@@ -98,7 +98,7 @@ class UniversalExtractor:
     def __init__(self, api_key: str = None, config: Dict = None):
         self.api_key = api_key or self._load_api_key()
         self.config = config or PLATFORM_CONFIG
-        self.timeout = 90
+        self.timeout = 120  # Increase to 2 minutes
     
     def _load_api_key(self) -> str:
         """Load API key from environment"""
@@ -317,17 +317,15 @@ class UniversalExtractor:
     def _create_prompt(self, url: str, platform: str, context: Any) -> str:
         """Create simple, effective prompt"""
         
-        return f"""Go to {url} and extract restaurant names you see.
+        return f"""Go to {url}
 
-Scroll down if needed to see more restaurants.
+List the restaurant names you see on the page.
 
-List the actual restaurant names you find, for example:
-1. Elena's
-2. Bocanova  
-3. Rancho Cantina
-etc.
-
-Stop after listing 5-10 restaurants."""
+Just list them like:
+Farmhouse Kitchen Thai Cuisine
+Burma Love Downtown  
+Hed Very Thai
+(continue with more if you see them)"""
     
     def _execute_cli(self, prompt: str) -> str:
         """Execute browser-use CLI"""
@@ -336,17 +334,26 @@ Stop after listing 5-10 restaurants."""
             env = os.environ.copy()
             env['GOOGLE_API_KEY'] = self.api_key
             
-            # Use Popen for better control over output
-            process = subprocess.Popen([
-                "poetry", "run", "browser-use",
-                "--model", "gemini-2.5-flash-lite-preview-06-17",
-                "--prompt", prompt
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env
-            )
+            # Try direct browser-use first, then with poetry
+            commands = [
+                ["browser-use", "--model", "gemini-2.5-flash-lite-preview-06-17", "--prompt", prompt],
+                ["poetry", "run", "browser-use", "--model", "gemini-2.5-flash-lite-preview-06-17", "--prompt", prompt]
+            ]
+            
+            for cmd in commands:
+                try:
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        env=env
+                    )
+                    break
+                except FileNotFoundError:
+                    continue
+            else:
+                raise Exception("browser-use command not found")
             
             try:
                 # Wait for completion with timeout
@@ -387,15 +394,40 @@ Stop after listing 5-10 restaurants."""
         
         results = []
         
-        # Look for structured format first
-        restaurant_blocks = re.findall(r'=== RESTAURANT ===(.+?)=== END ===', raw_output, re.DOTALL)
+        # First try pipe-delimited format (Restaurant | Price | Times)
+        lines = raw_output.split('\n')
+        for line in lines:
+            line = line.strip()
+            if '|' in line and not line.startswith('Restaurant Name'):
+                parts = [p.strip() for p in line.split('|')]
+                if len(parts) >= 2:
+                    name = parts[0]
+                    price = parts[1] if len(parts) > 1 else ''
+                    times_str = parts[2] if len(parts) > 2 else ''
+                    
+                    # Parse times
+                    availability = []
+                    if times_str and times_str.lower() not in ['no times available', 'none', '']:
+                        availability = [t.strip() for t in times_str.split(',') if t.strip()]
+                    
+                    if name and not name.startswith('['):  # Avoid placeholder text
+                        results.append(ExtractionResult(
+                            name=name,
+                            cuisine=self._get_context_cuisine(platform, context),
+                            price_range=price,
+                            location=self._get_context_location(platform, context),
+                            availability_times=availability
+                        ))
         
-        for block in restaurant_blocks:
-            result = self._parse_restaurant_block(block)
-            if result:
-                results.append(result)
+        # If no pipe format found, try structured format
+        if not results:
+            restaurant_blocks = re.findall(r'=== RESTAURANT ===(.+?)=== END ===', raw_output, re.DOTALL)
+            for block in restaurant_blocks:
+                result = self._parse_restaurant_block(block)
+                if result:
+                    results.append(result)
         
-        # Fallback to simple parsing if no structured format
+        # Last resort: simple parsing
         if not results:
             results = self._parse_simple_format(raw_output, platform, context)
         
@@ -418,23 +450,32 @@ Stop after listing 5-10 restaurants."""
         if 'name' not in data:
             return None
         
-        # Parse availability times
+        # Parse availability times - handle both 'times' and 'available times'
         availability = []
-        if 'times' in data:
-            times_str = data['times']
-            if '[' in times_str and ']' in times_str:
-                # Parse list format
+        times_key = 'times' if 'times' in data else 'available times' if 'available times' in data else None
+        
+        if times_key and data[times_key]:
+            times_str = data[times_key]
+            # Check for "No times available" or similar
+            if 'no times' in times_str.lower() or 'not available' in times_str.lower():
+                availability = []
+            elif '[' in times_str and ']' in times_str:
+                # Parse list format [12:15 PM, 12:30 PM, ...]
                 times_content = times_str.split('[')[1].split(']')[0]
-                availability = [t.strip() for t in times_content.split(',') if t.strip()]
+                availability = [t.strip() for t in times_content.split(',') if t.strip() and 'PM' in t.upper() or 'AM' in t.upper()]
             else:
-                availability = [times_str] if times_str else []
+                # Single time or comma-separated times
+                if ',' in times_str:
+                    availability = [t.strip() for t in times_str.split(',') if t.strip()]
+                else:
+                    availability = [times_str.strip()] if times_str.strip() else []
         
         return ExtractionResult(
             name=data.get('name', ''),
             cuisine=data.get('cuisine', ''),
             price_range=data.get('price', '$$'),
             location=data.get('location', ''),
-            availability_times=availability if availability else ['Check availability'],
+            availability_times=availability if availability else [],
             raw_data=data
         )
     
@@ -451,15 +492,27 @@ Stop after listing 5-10 restaurants."""
         
         for line in lines:
             line = line.strip()
+            # Skip empty lines, URLs, and common non-restaurant text
+            if not line or line.startswith('http') or line.startswith('(') or line.lower() in ['restaurant name', 'price', 'available times']:
+                continue
+                
+            # Check for numbered list format
             if re.match(r'^\d+\.', line):
                 # Extract restaurant name from numbered list
                 name = re.sub(r'^\d+\.\s*', '', line)
-                if name:
+            else:
+                # Just use the line as the name if it looks like a restaurant
+                name = line
+            
+            # Basic filtering to avoid non-restaurant lines
+            if name and len(name) > 3 and not name.startswith('[') and not '|' in name:
+                # Check if it looks like a restaurant name (has capital letters, not all lowercase)
+                if any(c.isupper() for c in name):
                     results.append(ExtractionResult(
                         name=name,
                         cuisine=default_cuisine,
-                        price_range=default_price,
-                        location=default_location,
+                        price_range=default_price or "$$",
+                        location=default_location or "San Francisco",
                         availability_times=[]
                     ))
         

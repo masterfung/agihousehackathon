@@ -20,53 +20,35 @@ import json
 PERSONAL_CONTEXT = {
     "dietary_requirements": {
         "vegetarian": True,
-        "allergies": ["peanut", "shrimp"],
-        "spice_tolerance": "mild",
-        "dietary_restrictions": ["no_meat", "no_peanuts", "no_shrimp"]
+        "keto": True,
+        "dietary_restrictions": ["vegetarian", "keto"]
     },
     "cuisine_preferences": {
-        "preferred_cuisines": ["fusion", "asian", "mexican"],
-        "favorite_types": ["thai", "vietnamese", "mexican", "indian"],
-        "avoid_cuisines": ["american_fast_food"]
+        "preferred_cuisines": ["thai", "indian"],
+        "thai": True,
+        "indian": True
     },
     "budget_pricing": {
-        "min_price_per_dish": 10.0,
-        "max_price_per_dish": 30.0,
-        "preferred_price_range": "$$_to_$$$",
-        "comfortable_total_per_person": 40.0
+        "cheap": True,
+        "preferred_price_range": "$"
+    },
+    "dining_preferences": {
+        "baking": True,
+        "party_size_typical": 2
+    },
+    "meal_prep": {
+        "chicken_and_rice": True
     },
     "location_transit": {
         "home_zip": "94109",
-        "preferred_neighborhoods": ["nob_hill", "union_square", "castro", "mission"],
-        "max_distance_miles": 3.0,
-        "prefers_public_transit": True
-    },
-    "dining_preferences": {
-        "wine_list_important": True,
-        "allows_corkage": True,
-        "ambiance_preferences": ["cozy", "intimate", "good_for_conversation"],
-        "party_size_typical": 2,
-        "reservation_preference": "opentable_first"
+        "preferred_neighborhoods": ["san_francisco"]
     },
     "availability_preferences": {
         "preferred_meal_times": {
             "breakfast": "9:00-11:00",
             "lunch": "12:00-14:00",
             "dinner": "18:00-21:00"
-        },
-        "preferred_days": ["tuesday", "wednesday", "thursday", "friday", "saturday"],
-        "avoid_times": ["monday_dinner", "sunday_brunch"]
-    },
-    "clothing_preferences": {
-        "shirt_sizes": ["small", "medium", "large", "xlarge"],
-        "pants_waist_size": ["30"],
-        "pants_length": ["30"],
-        "gender": ["male"],
-        "jacket_sizes": ["large"],
-        "shoe_size": ["10"],
-        "measurement_system": ["us"],
-        "brands_to_avoid": ["levis", "gap", "old navy", "forever 21", "american eagle", "h&m", "zara", "uniqlo"],
-        "preferred_brands": ["AG"]
+        }
     }
 }
 
